@@ -1,0 +1,25 @@
+scan:
+  name: Scan
+  description: >-
+    Scans the entity registry for entries flagged as orphaned by Home
+    Assistant itself (orphaned_timestamp set). Splits results into "safe"
+    (entity_id not reused anywhere live) and "dangerous" (entity_id has
+    been reused by a currently live entity — must be removed by
+    registry_id only, never by name).
+  fields: {}
+
+remove:
+  name: Remove
+  description: >-
+    Permanently removes specific orphaned registry entries by their
+    internal registry_id (from a prior scan). Re-checks the live-entity
+    safety condition independently before each removal and refuses any
+    entry whose entity_id is currently live.
+  fields:
+    registry_ids:
+      name: Registry IDs
+      description: List of internal registry ids to remove (from scan results).
+      required: true
+      example: ["06afd6ccbd7170964c627a92e29aa928"]
+      selector:
+        object:
