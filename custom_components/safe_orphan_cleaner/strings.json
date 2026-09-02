@@ -2,7 +2,7 @@
   "services": {
     "scan": {
       "name": "Scan",
-      "description": "Scans the entity registry for entries flagged as orphaned by Home Assistant itself (orphaned_timestamp set). Writes two ready-to-run bash scripts under <config>/safe_orphan_cleaner/ - safe_orphans_remove.sh and dangerous_orphans_remove.sh, each line already a full removal call - and returns counts plus the path to each script.",
+      "description": "Scans the entity registry for entries flagged as orphaned by Home Assistant itself (orphaned_timestamp set). Writes two ready-to-run bash scripts under safe_orphan_cleaner/ inside your Home Assistant config directory - safe_orphans_remove.sh and dangerous_orphans_remove.sh, each line already a full removal call - and returns counts plus the path to each script.",
       "fields": {}
     }
   }

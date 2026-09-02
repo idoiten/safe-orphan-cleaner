@@ -2,7 +2,7 @@
   "services": {
     "scan": {
       "name": "Skanna",
-      "description": "Skannar entitetsregistret efter poster som Home Assistant själv flaggat som föräldralösa (orphaned_timestamp satt). Skriver två färdiga bash-skript under <config>/safe_orphan_cleaner/ — safe_orphans_remove.sh och dangerous_orphans_remove.sh, varje rad redan ett komplett borttagningsanrop — och returnerar antal plus sökvägen till varje skript.",
+      "description": "Skannar entitetsregistret efter poster som Home Assistant själv flaggat som föräldralösa (orphaned_timestamp satt). Skriver två färdiga bash-skript under safe_orphan_cleaner/ inuti er Home Assistant-konfigurationsmapp — safe_orphans_remove.sh och dangerous_orphans_remove.sh, varje rad redan ett komplett borttagningsanrop — och returnerar antal plus sökvägen till varje skript.",
       "fields": {}
     }
   }
