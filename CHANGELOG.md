@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented here.
 
+## [0.6.1] - 2026-09-02
+
+### Fixed
+- "Translation error: UNCLOSED_TAG" on the scan action's description in
+  Developer Tools > Actions. The text used literal `<config>`, which
+  HA's frontend translation renderer interpreted as an unclosed
+  HTML/markup tag. Reworded to avoid literal angle brackets entirely.
+- Generated scripts (`safe_orphans_remove.sh` /
+  `dangerous_orphans_remove.sh`) had `set -e`, which aborted the whole
+  batch after just the first entity whenever the underlying bash script
+  exited non-zero on an otherwise-normal path (e.g. after the
+  orphaned-attributes N/T/A prompt). Removed - each line now runs
+  independently regardless of the previous line's exit status.
+
 ## [0.6.0] - 2026-09-02
 
 ### Changed
