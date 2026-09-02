@@ -34,7 +34,7 @@ collision check, and only ever referenced afterward by its internal
 (moving them to `deleted_entities`) — it does not purge an entry that's
 already there, and there's no documented public API that does. Rather
 than pretend to have a working "Remove" button, this integration
-generates ready commands for the proven community bash script,
+generates ready-to-run scripts for the proven community bash script,
 [6 Routines to Delete/Rename/Move Devices & Entities](https://community.home-assistant.io/t/6-routines-to-delete-rename-move-devices-entities-and-their-corresponding-registry-entries-data-and-metadata/755476/7),
 which also cleans up historical `states`/`statistics` data that this
 integration alone could never touch anyway.
@@ -50,7 +50,7 @@ integration alone could never touch anyway.
    safe_orphan_cleaner:
      script_path: /home/pelle/scripts/ha_delete_device_entity.sh
      config_path: /home/pelle/docker/homeassistant/config
-     backup_dir: /home/pelle/scripts/backups/ha-registry
+     backup_dir: /home/pelle/scripts/backups
    ```
 5. Restart Home Assistant
 6. Separately, install the bash script itself from the community thread
@@ -61,34 +61,40 @@ integration alone could never touch anyway.
 
 Developer Tools → Actions → `safe_orphan_cleaner.scan`
 
-This writes two files under `<config_path>/safe_orphan_cleaner/`:
+This writes two ready-to-run bash scripts under
+`<config_path>/safe_orphan_cleaner/`:
 
-- `safe_orphans_remove.txt` — entity_id not reused anywhere live
-- `dangerous_orphans_remove.txt` — entity_id reused by a currently live
-  entity (still safe to remove, since both files always use `-E`/
+- `safe_orphans_remove.sh` — entity_id not reused anywhere live
+- `dangerous_orphans_remove.sh` — entity_id reused by a currently live
+  entity (still safe to remove, since both scripts always use `-E`/
   `registry_id`, never `-e`/`entity_id` — the split exists so you can
   choose to review the "dangerous" batch more carefully if you want, not
   because it's unsafe on its own)
 
-Each line is one internal `registry_id`. The service response also
-includes a ready shell command per file, e.g.:
+Each script already contains one full removal command per line — running
+it is just `bash <path>`, nothing to copy-paste. The service response
+gives you the exact path to each:
 
 ```yaml
 safe_count: 41
 dangerous_count: 2
-safe_file: /home/pelle/docker/homeassistant/config/safe_orphan_cleaner/safe_orphans_remove.txt
-dangerous_file: /home/pelle/docker/homeassistant/config/safe_orphan_cleaner/dangerous_orphans_remove.txt
-safe_command: 'while read -r id; do sudo /home/pelle/scripts/ha_delete_device_entity.sh -x /home/pelle/docker/homeassistant/config -b /home/pelle/scripts/backups/ha-registry -E "$id"; done < /home/pelle/docker/homeassistant/config/safe_orphan_cleaner/safe_orphans_remove.txt'
-dangerous_command: '...'
+safe_script: /home/pelle/docker/homeassistant/config/safe_orphan_cleaner/safe_orphans_remove.sh
+dangerous_script: /home/pelle/docker/homeassistant/config/safe_orphan_cleaner/dangerous_orphans_remove.sh
 ```
 
-Copy the command, **stop Home Assistant first** (the bash script requires
-this), and run it. Review each prompt the script shows before confirming
-— it asks per entity, it does not blindly bulk-delete.
+**Stop Home Assistant first** (the underlying bash script requires this),
+then run e.g.:
+
+```bash
+bash /home/pelle/docker/homeassistant/config/safe_orphan_cleaner/safe_orphans_remove.sh
+```
+
+Review each prompt the underlying script shows before confirming — it
+asks per entity, it does not blindly bulk-delete.
 
 ## Disclaimer
 
 Read-only against the entity registry itself; the actual deletion happens
 via the external bash script, which directly manipulates Home Assistant's
-storage files and database. Review the generated files yourself before
+storage files and database. Review the generated scripts yourself before
 running anything. No warranty.
