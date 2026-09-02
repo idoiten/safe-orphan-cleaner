@@ -4,11 +4,14 @@ Finds Home Assistant entity registry entries that HA itself has already
 flagged as orphaned (`orphaned_timestamp` set — the same signal behind the
 "This entity is currently unavailable and is an orphan..." warning), and
 crucially checks whether that `entity_id` has since been **reused by a
-currently live entity** before ever suggesting removal by name.
+currently live entity** before treating it the same as a genuinely unused
+one.
 
 Existing community tools either can't detect this collision (and could
-delete a live entity by accident) or have no discovery step at all. This
-integration does both, safely.
+guide you into deleting a live entity by accident) or have no discovery
+step at all. This integration does the discovery and the safety check,
+then hands off the actual removal to a proven external tool rather than
+guessing at an undocumented internal API.
 
 ## Why this exists
 
@@ -18,63 +21,74 @@ Built after discovering, the hard way, that:
 - An old deleted `binary_sensor.markisstyrning_sol` shared its entity_id
   with the live awning sun sensor.
 
-Removing either "by name" would have deleted the live entity instead of
-the intended orphan. This integration makes that class of mistake
-impossible by design: entries with a live-entity collision are reported
-separately and can **only** be removed by internal `registry_id`, never
-by `entity_id`.
+Using either "by name" would have deleted the live entity instead of the
+intended orphan. This integration keeps that class of mistake off the
+table: every orphan is scanned and split into two lists by exactly this
+collision check, and only ever referenced afterward by its internal
+`registry_id`, never by `entity_id`.
+
+## What this does *not* do
+
+**It does not remove anything itself.** Testing showed
+`entity_registry.async_remove()` only reliably removes *live* entities
+(moving them to `deleted_entities`) — it does not purge an entry that's
+already there, and there's no documented public API that does. Rather
+than pretend to have a working "Remove" button, this integration
+generates ready commands for the proven community bash script,
+[6 Routines to Delete/Rename/Move Devices & Entities](https://community.home-assistant.io/t/6-routines-to-delete-rename-move-devices-entities-and-their-corresponding-registry-entries-data-and-metadata/755476/7),
+which also cleans up historical `states`/`statistics` data that this
+integration alone could never touch anyway.
 
 ## Installation (HACS custom repository)
 
 1. HACS → the three dots (top right) → **Custom repositories**
 2. Add this repo's URL, category **Integration**
 3. Install **Safe Orphan Cleaner**
-4. Add to `configuration.yaml`:
+4. Add to `configuration.yaml` (all three keys are optional — shown
+   defaults below):
    ```yaml
    safe_orphan_cleaner:
+     script_path: /home/pelle/scripts/ha_delete_device_entity.sh
+     config_path: /home/pelle/docker/homeassistant/config
+     backup_dir: /home/pelle/scripts/backups/ha-registry
    ```
 5. Restart Home Assistant
+6. Separately, install the bash script itself from the community thread
+   linked above — this integration only generates commands for it, it
+   doesn't include it.
 
 ## Usage
 
-**1. Scan** (Developer Tools → Actions → `safe_orphan_cleaner.scan`)
+Developer Tools → Actions → `safe_orphan_cleaner.scan`
 
-Returns something like:
+This writes two files under `<config_path>/safe_orphan_cleaner/`:
+
+- `safe_orphans_remove.txt` — entity_id not reused anywhere live
+- `dangerous_orphans_remove.txt` — entity_id reused by a currently live
+  entity (still safe to remove, since both files always use `-E`/
+  `registry_id`, never `-e`/`entity_id` — the split exists so you can
+  choose to review the "dangerous" batch more carefully if you want, not
+  because it's unsafe on its own)
+
+Each line is one internal `registry_id`. The service response also
+includes a ready shell command per file, e.g.:
+
 ```yaml
 safe_count: 41
 dangerous_count: 2
-safe:
-  - entity_id: sensor.old_thing
-    registry_id: abc123...
-    platform: some_platform
-    orphaned_since: 1735689600.0
-dangerous:
-  - entity_id: automation.hackbevattning
-    registry_id: 5040ffe9...
-    reason: "entity_id currently reused by a LIVE entity — do not remove by entity_id, use registry_id only"
+safe_file: /home/pelle/docker/homeassistant/config/safe_orphan_cleaner/safe_orphans_remove.txt
+dangerous_file: /home/pelle/docker/homeassistant/config/safe_orphan_cleaner/dangerous_orphans_remove.txt
+safe_command: 'while read -r id; do sudo /home/pelle/scripts/ha_delete_device_entity.sh -x /home/pelle/docker/homeassistant/config -b /home/pelle/scripts/backups/ha-registry -E "$id"; done < /home/pelle/docker/homeassistant/config/safe_orphan_cleaner/safe_orphans_remove.txt'
+dangerous_command: '...'
 ```
 
-**2. Remove** (only after reviewing the scan yourself)
-```yaml
-service: safe_orphan_cleaner.remove
-data:
-  registry_ids:
-    - abc123...
-```
-
-Every `registry_id` passed to `remove` is independently re-checked for a
-live-entity collision at removal time — not just trusted from an earlier
-scan — and refused if one is found.
-
-## What this does *not* do
-
-Unlike the [bash script approach](https://community.home-assistant.io/t/6-routines-to-delete-rename-move-devices-entities-and-their-corresponding-registry-entries-data-and-metadata/755476),
-this only touches the entity registry — it does **not** clean up
-`states`/`statistics` history in `home-assistant_v2.db`. For orphans with
-substantial historical data, run that script afterward for a full
-cleanup.
+Copy the command, **stop Home Assistant first** (the bash script requires
+this), and run it. Review each prompt the script shows before confirming
+— it asks per entity, it does not blindly bulk-delete.
 
 ## Disclaimer
 
-Directly manipulates the entity registry. Review scan results yourself
-before calling `remove`. No warranty.
+Read-only against the entity registry itself; the actual deletion happens
+via the external bash script, which directly manipulates Home Assistant's
+storage files and database. Review the generated files yourself before
+running anything. No warranty.
