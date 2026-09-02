@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented here.
 
+## [0.3.1] - 2026-09-02
+
+### Fixed
+- Service names, descriptions, and field labels (shown in Developer
+  Tools > Actions) were never translatable - `strings.json` and
+  `translations/*.json` only had an `issues` section. Added the missing
+  `services` section (`scan`, `remove`, `registry_ids` field) in English
+  and Swedish.
+
 ## [0.3.0] - 2026-09-02
 
 ### Added
