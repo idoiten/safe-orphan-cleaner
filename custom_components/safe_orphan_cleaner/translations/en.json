@@ -1,0 +1,23 @@
+{
+  "issues": {
+    "orphan_safe": {
+      "title": "Orphaned entity: {entity_id}",
+      "description": "This entity from the '{platform}' platform is orphaned (its source integration or config is gone) and its entity_id is not currently used by anything live. Click Fix to remove it from the registry.",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Remove orphaned entity?",
+            "description": "Remove {entity_id} (registry id: {registry_id}) from the entity registry? This only removes the registry entry, not any historical state/statistics data."
+          }
+        },
+        "abort": {
+          "entity_now_live": "Aborted: {entity_id} has become a live entity since the last scan. Run a new scan."
+        }
+      }
+    },
+    "orphan_dangerous": {
+      "title": "Orphaned entity (name reused - manual action needed): {entity_id}",
+      "description": "An orphaned registry entry (registry id: {registry_id}) shares its entity_id with a currently LIVE entity. This cannot be auto-fixed for safety. If you want to remove only the orphaned entry, call the safe_orphan_cleaner.remove service with registry_ids: ['{registry_id}'] - never remove by entity_id in this case."
+      }
+  }
+}

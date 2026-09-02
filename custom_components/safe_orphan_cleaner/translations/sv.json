@@ -1,0 +1,23 @@
+{
+  "issues": {
+    "orphan_safe": {
+      "title": "Föräldralös entitet: {entity_id}",
+      "description": "Den här entiteten från plattformen '{platform}' är föräldralös (dess källintegration eller konfiguration finns inte längre) och dess entity_id används inte av något aktivt just nu. Klicka Åtgärda för att ta bort den ur registret.",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Ta bort föräldralös entitet?",
+            "description": "Ta bort {entity_id} (registrerings-ID: {registry_id}) ur entitetsregistret? Det här tar bara bort registerposten, inte eventuell historisk state-/statistikdata."
+          }
+        },
+        "abort": {
+          "entity_now_live": "Avbrutet: {entity_id} har blivit en aktiv entitet sedan senaste skanningen. Kör en ny skanning."
+        }
+      }
+    },
+    "orphan_dangerous": {
+      "title": "Föräldralös entitet (namnet återanvänt – manuell åtgärd krävs): {entity_id}",
+      "description": "En föräldralös registerpost (registrerings-ID: {registry_id}) delar sitt entity_id med en entitet som är aktiv just nu. Detta kan inte åtgärdas automatiskt av säkerhetsskäl. Om du vill ta bort bara den föräldralösa posten, anropa tjänsten safe_orphan_cleaner.remove med registry_ids: ['{registry_id}'] — ta aldrig bort via entity_id i det här fallet."
+    }
+  }
+}
