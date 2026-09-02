@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented here.
 
+## [0.4.0] - 2026-09-02
+
+### Changed
+- **Breaking behavior change:** `safe_orphan_cleaner.remove` no longer
+  attempts to remove entries from the registry itself. Real-world testing
+  showed `entity_registry.async_remove()` only reliably removes *live*
+  entities (moving them to `deleted_entities`) - it does not purge an
+  entry that is already in `deleted_entities`. Rather than rely on an
+  undocumented internal API, both `scan` and `remove` now generate the
+  exact, ready-to-run command for the proven community bash script
+  ([6 Routines to Delete/Rename/Move Devices & Entities](https://community.home-assistant.io/t/6-routines-to-delete-rename-move-devices-entities-and-their-corresponding-registry-entries-data-and-metadata/755476/7)),
+  which also cleans up historical `states`/`statistics` data that this
+  integration alone could never touch anyway.
+- Repair issues (Settings > System > Repairs) are now all
+  informational (`is_fixable=False`) - safe orphans show the ready
+  command directly in the issue description instead of a one-click Fix
+  button, since that button never actually worked correctly.
+- Added configurable `script_path`, `config_path`, and `backup_dir` via
+  `configuration.yaml` (previously hardcoded).
+
+### Removed
+- `repairs.py` - no longer needed, nothing is auto-fixable.
+
 ## [0.3.1] - 2026-09-02
 
 ### Fixed
