@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented here.
 
+## [0.6.0] - 2026-09-02
+
+### Changed
+- `safe_orphan_cleaner.scan` now writes two **ready-to-run bash scripts**
+  (`safe_orphans_remove.sh` / `dangerous_orphans_remove.sh`) instead of
+  plain id-list `.txt` files - each line is already a complete removal
+  command, so running is just `bash <path>`. No more separate loop
+  command to copy-paste (which was error-prone in a terminal for long
+  one-liners).
+- Scripts are `chmod 755` on write, proactively avoiding a host-side
+  "Permission denied" caused by the container and host running as
+  different UIDs across the Docker bind mount.
+- Default `backup_dir` changed from `/home/pelle/scripts/backups/ha-registry`
+  to `/home/pelle/scripts/backups`.
+
 ## [0.5.0] - 2026-09-02
 
 ### Changed
