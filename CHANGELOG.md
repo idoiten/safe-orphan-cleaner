@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented here.
 
+## [0.5.0] - 2026-09-02
+
+### Changed
+- `safe_orphan_cleaner.scan` now writes two plain-text files under
+  `<config>/safe_orphan_cleaner/` - `safe_orphans_remove.txt` and
+  `dangerous_orphans_remove.txt` (one internal `registry_id` per line) -
+  and returns counts plus **one ready shell command per file** (a loop
+  over the bash script) instead of per-entity detail.
+
+### Removed
+- `safe_orphan_cleaner.remove` service - redundant now that `scan`
+  writes the files directly.
+- Repair issue creation (Settings > System > Repairs) - was already
+  informational-only since 0.4.0; simpler to not have it at all.
+
 ## [0.4.0] - 2026-09-02
 
 ### Changed
