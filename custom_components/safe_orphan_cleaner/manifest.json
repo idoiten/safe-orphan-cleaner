@@ -1,0 +1,11 @@
+{
+  "domain": "safe_orphan_cleaner",
+  "name": "Safe Orphan Cleaner",
+  "codeowners": [],
+  "config_flow": false,
+  "documentation": "https://github.com/",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/",
+  "requirements": [],
+  "version": "0.1.0"
+}
