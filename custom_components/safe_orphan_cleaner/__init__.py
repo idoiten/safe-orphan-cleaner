@@ -1,31 +1,35 @@
 """Safe Orphan Cleaner.
 
-Finds entity_registry entries flagged as orphaned by Home Assistant itself
-(the same orphaned_timestamp signal used by the official frontend warning),
-and - critically - checks whether the same entity_id has been reused by a
-currently LIVE entity before ever suggesting removal by name.
+Scans the entity registry for entries flagged as orphaned by Home
+Assistant itself (orphaned_timestamp set - the same signal behind the
+official "This entity is currently unavailable and is an orphan..."
+frontend warning), checks each one for whether its entity_id has been
+reused by a currently LIVE entity, and writes two plain-text files of
+internal registry_ids - one per line, ready to feed into a shell loop
+around the proven community bash script
+(https://community.home-assistant.io/t/6-routines-to-delete-rename-move-devices-entities-and-their-corresponding-registry-entries-data-and-metadata/755476/7):
 
-IMPORTANT DESIGN NOTE (as of 0.4.0): this integration does NOT remove
-registry entries itself. Testing showed entity_registry.async_remove()
-only reliably removes LIVE entities (moving them to deleted_entities) -
-it does not purge an entry that is already in deleted_entities. Rather
-than guess at an undocumented internal API, this integration generates
-the exact, ready-to-run command for the community bash script
-(https://community.home-assistant.io/t/6-routines-to-delete-rename-move-devices-entities-and-their-corresponding-registry-entries-data-and-metadata/755476/7)
-which is proven to work (including cleaning up historical
-states/statistics data, which this integration alone cannot do anyway).
+  safe_orphans_remove.txt      - entity_id not reused anywhere live
+  dangerous_orphans_remove.txt - entity_id reused by a live entity
+                                  (still safe to remove via -E/registry_id,
+                                  just never via -e/entity_id)
 
-Usage:
+Both files always use -E (registry_id), which sidesteps the entity_id
+collision question entirely - that's *why* the split exists, so you can
+choose to run the "dangerous" batch separately/more carefully if you want,
+not because it's unsafe on its own.
+
+This integration does not remove anything itself. Real-world testing
+showed entity_registry.async_remove() only reliably removes *live*
+entities (moving them to deleted_entities) - it does not purge an entry
+that's already there, and there's no documented public API that does.
+Generating commands for the proven script is more honest than pretending
+to have a working "Remove" button.
+
+Service:
   safe_orphan_cleaner.scan
-    Scans the registry. Each safe orphan's result includes a ready
-    remove_command. Also creates one informational Repair issue per
-    found orphan (Settings > System > Repairs) with the command in its
-    description - nothing is auto-fixable, by design.
-
-  safe_orphan_cleaner.remove
-    Given a list of registry_ids, re-verifies the live-entity safety
-    check and returns the exact shell command(s) to run manually
-    (does not touch the registry itself).
+    Re-scans, rewrites both files, and returns counts plus one ready
+    shell command per file.
 """
 from __future__ import annotations
 
@@ -34,15 +38,12 @@ import logging
 import voluptuous as vol
 
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
-from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers import issue_registry as ir
 
 DOMAIN = "safe_orphan_cleaner"
 _LOGGER = logging.getLogger(__name__)
 
 SERVICE_SCAN = "scan"
-SERVICE_REMOVE = "remove"
 
 CONF_SCRIPT_PATH = "script_path"
 CONF_CONFIG_PATH = "config_path"
@@ -52,26 +53,22 @@ DEFAULT_SCRIPT_PATH = "/home/pelle/scripts/ha_delete_device_entity.sh"
 DEFAULT_CONFIG_PATH = "/home/pelle/docker/homeassistant/config"
 DEFAULT_BACKUP_DIR = "/home/pelle/scripts/backups/ha-registry"
 
+SUBFOLDER = "safe_orphan_cleaner"
+SAFE_FILENAME = "safe_orphans_remove.txt"
+DANGEROUS_FILENAME = "dangerous_orphans_remove.txt"
+
 CONFIG_SCHEMA = vol.Schema(
     {
         DOMAIN: vol.Schema(
             {
-                vol.Optional(CONF_SCRIPT_PATH, default=DEFAULT_SCRIPT_PATH): cv.string,
-                vol.Optional(CONF_CONFIG_PATH, default=DEFAULT_CONFIG_PATH): cv.string,
-                vol.Optional(CONF_BACKUP_DIR, default=DEFAULT_BACKUP_DIR): cv.string,
+                vol.Optional(CONF_SCRIPT_PATH, default=DEFAULT_SCRIPT_PATH): str,
+                vol.Optional(CONF_CONFIG_PATH, default=DEFAULT_CONFIG_PATH): str,
+                vol.Optional(CONF_BACKUP_DIR, default=DEFAULT_BACKUP_DIR): str,
             }
         )
     },
     extra=vol.ALLOW_EXTRA,
 )
-
-REMOVE_SCHEMA = vol.Schema(
-    {
-        vol.Required("registry_ids"): vol.All(cv.ensure_list, [cv.string]),
-    }
-)
-
-ISSUE_PREFIX = "orphan_"
 
 
 def _deleted_entity_id(deleted_entry) -> str | None:
@@ -79,28 +76,17 @@ def _deleted_entity_id(deleted_entry) -> str | None:
     return getattr(deleted_entry, "entity_id", None)
 
 
-def _build_command(paths: dict, registry_id: str) -> str:
-    """Build the ready-to-run shell command for one registry_id."""
-    return (
-        f"sudo {paths[CONF_SCRIPT_PATH]} "
-        f"-x {paths[CONF_CONFIG_PATH]} "
-        f"-b {paths[CONF_BACKUP_DIR]} "
-        f"-E {registry_id}"
-    )
-
-
-def _run_scan(hass: HomeAssistant, paths: dict) -> dict:
-    """Do the actual registry scan. Returns the raw results dict."""
+def _run_scan(hass: HomeAssistant) -> dict:
+    """Scan the registry. Returns raw ids split into safe/dangerous."""
     registry = er.async_get(hass)
     live_ids = set(registry.entities.keys())
 
-    safe: list[dict] = []
-    dangerous: list[dict] = []
+    safe_ids: list[str] = []
+    dangerous_ids: list[str] = []
     skipped_no_entity_id = 0
 
     for deleted_entry in registry.deleted_entities.values():
-        orphaned_ts = getattr(deleted_entry, "orphaned_timestamp", None)
-        if orphaned_ts is None:
+        if getattr(deleted_entry, "orphaned_timestamp", None) is None:
             continue
 
         entity_id = _deleted_entity_id(deleted_entry)
@@ -109,163 +95,93 @@ def _run_scan(hass: HomeAssistant, paths: dict) -> dict:
             continue
 
         registry_id = getattr(deleted_entry, "id", None)
-        info = {
-            "entity_id": entity_id,
-            "unique_id": getattr(deleted_entry, "unique_id", None),
-            "platform": getattr(deleted_entry, "platform", None),
-            "registry_id": registry_id,
-            "orphaned_since": orphaned_ts,
-        }
+        if registry_id is None:
+            skipped_no_entity_id += 1
+            continue
 
         if entity_id in live_ids:
-            info["reason"] = (
-                "entity_id currently reused by a LIVE entity - "
-                "do not remove by entity_id, use registry_id only"
-            )
-            dangerous.append(info)
+            dangerous_ids.append(registry_id)
         else:
-            info["remove_command"] = _build_command(paths, registry_id)
-            safe.append(info)
+            safe_ids.append(registry_id)
 
     return {
-        "safe": safe,
-        "dangerous": dangerous,
-        "safe_count": len(safe),
-        "dangerous_count": len(dangerous),
+        "safe_ids": safe_ids,
+        "dangerous_ids": dangerous_ids,
         "skipped_unresolvable": skipped_no_entity_id,
     }
 
 
-def _sync_repair_issues(hass: HomeAssistant, results: dict) -> None:
-    """Create/refresh an informational Repair issue per found orphan.
+def _write_id_file(hass: HomeAssistant, filename: str, ids: list[str]) -> str:
+    """Write one registry_id per line. Returns the HA-internal path written."""
+    rel_path = f"{SUBFOLDER}/{filename}"
+    full_path = hass.config.path(rel_path)
+    import os
 
-    None of these are auto-fixable (is_fixable=False) - see the module
-    docstring for why. The ready remove_command is included directly in
-    each safe issue's description so it's visible without extra clicks.
-    """
-    current_issue_ids: set[str] = set()
+    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+    with open(full_path, "w", encoding="utf-8") as f:
+        for reg_id in ids:
+            f.write(f"{reg_id}\n")
+    return full_path
 
-    for item in results["safe"]:
-        issue_id = f"{ISSUE_PREFIX}{item['registry_id']}"
-        current_issue_ids.add(issue_id)
-        ir.async_create_issue(
-            hass,
-            DOMAIN,
-            issue_id,
-            is_fixable=False,
-            severity=ir.IssueSeverity.WARNING,
-            translation_key="orphan_safe",
-            translation_placeholders={
-                "entity_id": item["entity_id"],
-                "platform": str(item["platform"]),
-                "remove_command": item["remove_command"],
-            },
-        )
 
-    for item in results["dangerous"]:
-        issue_id = f"{ISSUE_PREFIX}{item['registry_id']}"
-        current_issue_ids.add(issue_id)
-        ir.async_create_issue(
-            hass,
-            DOMAIN,
-            issue_id,
-            is_fixable=False,
-            severity=ir.IssueSeverity.ERROR,
-            translation_key="orphan_dangerous",
-            translation_placeholders={
-                "entity_id": item["entity_id"],
-                "registry_id": str(item["registry_id"]),
-            },
-        )
-
-    previous_issue_ids: set[str] = hass.data.get(DOMAIN, {}).get("issue_ids", set())
-    for stale_issue_id in previous_issue_ids - current_issue_ids:
-        ir.async_delete_issue(hass, DOMAIN, stale_issue_id)
-
-    hass.data.setdefault(DOMAIN, {})["issue_ids"] = current_issue_ids
+def _loop_command(paths: dict, host_file_path: str) -> str:
+    """Build the one-liner that removes every id listed in a file."""
+    return (
+        f'while read -r id; do sudo {paths[CONF_SCRIPT_PATH]} '
+        f'-x {paths[CONF_CONFIG_PATH]} -b {paths[CONF_BACKUP_DIR]} '
+        f'-E "$id"; done < {host_file_path}'
+    )
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """Set up the safe_orphan_cleaner services."""
-    hass.data.setdefault(DOMAIN, {})
-
+    """Set up the safe_orphan_cleaner scan service."""
     domain_config = config.get(DOMAIN) or {}
     paths = {
         CONF_SCRIPT_PATH: domain_config.get(CONF_SCRIPT_PATH, DEFAULT_SCRIPT_PATH),
         CONF_CONFIG_PATH: domain_config.get(CONF_CONFIG_PATH, DEFAULT_CONFIG_PATH),
         CONF_BACKUP_DIR: domain_config.get(CONF_BACKUP_DIR, DEFAULT_BACKUP_DIR),
     }
-    hass.data[DOMAIN]["paths"] = paths
 
     async def handle_scan(call: ServiceCall) -> dict:
-        results = _run_scan(hass, hass.data[DOMAIN]["paths"])
-        _sync_repair_issues(hass, results)
+        results = await hass.async_add_executor_job(_run_scan, hass)
 
-        _LOGGER.info(
-            "Safe Orphan Cleaner scan: %d safe, %d dangerous, %d unresolvable",
-            results["safe_count"],
-            results["dangerous_count"],
-            results["skipped_unresolvable"],
+        await hass.async_add_executor_job(
+            _write_id_file, hass, SAFE_FILENAME, results["safe_ids"]
         )
-        hass.bus.async_fire(f"{DOMAIN}_scan_complete", results)
-        return results
+        await hass.async_add_executor_job(
+            _write_id_file, hass, DANGEROUS_FILENAME, results["dangerous_ids"]
+        )
 
-    async def handle_remove(call: ServiceCall) -> dict:
-        registry = er.async_get(hass)
-        live_ids = set(registry.entities.keys())
-        requested_ids = call.data["registry_ids"]
-        paths = hass.data[DOMAIN]["paths"]
+        # Host-side paths (where the script actually runs), built from the
+        # configured config_path rather than HA's internal /config path -
+        # those two only coincide for non-container installs.
+        safe_host_path = f"{paths[CONF_CONFIG_PATH]}/{SUBFOLDER}/{SAFE_FILENAME}"
+        dangerous_host_path = f"{paths[CONF_CONFIG_PATH]}/{SUBFOLDER}/{DANGEROUS_FILENAME}"
 
-        by_registry_id = {
-            getattr(d, "id", None): d for d in registry.deleted_entities.values()
+        response = {
+            "safe_count": len(results["safe_ids"]),
+            "dangerous_count": len(results["dangerous_ids"]),
+            "skipped_unresolvable": results["skipped_unresolvable"],
+            "safe_file": safe_host_path,
+            "dangerous_file": dangerous_host_path,
         }
 
-        commands: list[dict] = []
-        skipped: list[dict] = []
+        if results["safe_ids"]:
+            response["safe_command"] = _loop_command(paths, safe_host_path)
+        if results["dangerous_ids"]:
+            response["dangerous_command"] = _loop_command(paths, dangerous_host_path)
 
-        for reg_id in requested_ids:
-            deleted_entry = by_registry_id.get(reg_id)
-            if deleted_entry is None:
-                skipped.append({"registry_id": reg_id, "reason": "not found among orphaned entries"})
-                continue
-
-            entity_id = _deleted_entity_id(deleted_entry)
-
-            if entity_id is not None and entity_id in live_ids:
-                skipped.append(
-                    {
-                        "registry_id": reg_id,
-                        "entity_id": entity_id,
-                        "reason": "SAFETY: entity_id is currently live - refused",
-                    }
-                )
-                continue
-
-            commands.append(
-                {
-                    "registry_id": reg_id,
-                    "entity_id": entity_id,
-                    "command": _build_command(paths, reg_id),
-                }
-            )
-
-        results = {"commands": commands, "skipped": skipped}
         _LOGGER.info(
-            "Safe Orphan Cleaner remove: %d command(s) generated, %d skipped",
-            len(commands),
-            len(skipped),
+            "Safe Orphan Cleaner scan: %d safe, %d dangerous, %d unresolvable - written to %s",
+            response["safe_count"],
+            response["dangerous_count"],
+            response["skipped_unresolvable"],
+            SUBFOLDER,
         )
-        return results
+        return response
 
     hass.services.async_register(
         DOMAIN, SERVICE_SCAN, handle_scan, supports_response=SupportsResponse.ONLY
-    )
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_REMOVE,
-        handle_remove,
-        schema=REMOVE_SCHEMA,
-        supports_response=SupportsResponse.ONLY,
     )
 
     return True

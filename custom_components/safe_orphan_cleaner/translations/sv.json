@@ -2,28 +2,8 @@
   "services": {
     "scan": {
       "name": "Skanna",
-      "description": "Skannar entitetsregistret efter poster som Home Assistant själv flaggat som föräldralösa (orphaned_timestamp satt). Delar upp resultaten i \"safe\" (entity_id inte återanvänt någonstans live — inkluderar ett färdigt kommando att köra) och \"dangerous\" (entity_id har återanvänts av en entitet som är aktiv just nu — får aldrig tas bort via namn).",
+      "description": "Skannar entitetsregistret efter poster som Home Assistant själv flaggat som föräldralösa (orphaned_timestamp satt). Skriver två filer under <config>/safe_orphan_cleaner/ — safe_orphans_remove.txt och dangerous_orphans_remove.txt, ett internt registry_id per rad — och returnerar antal plus ett färdigt skalkommando för varje fil.",
       "fields": {}
-    },
-    "remove": {
-      "name": "Ta bort",
-      "description": "Givet en lista med registry_ids från en tidigare skanning, kontrollerar live-entitetssäkerheten på nytt och returnerar exakt vilket/vilka skalkommandon som ska köras manuellt för att ta bort respektive post. Rör inte registret själv.",
-      "fields": {
-        "registry_ids": {
-          "name": "Registrerings-ID:n",
-          "description": "Lista över interna registrerings-ID:n att generera borttagningskommandon för (från skanningsresultat)."
-        }
-      }
-    }
-  },
-  "issues": {
-    "orphan_safe": {
-      "title": "Föräldralös entitet: {entity_id}",
-      "description": "Den här entiteten från plattformen '{platform}' är föräldralös (dess källintegration eller konfiguration finns inte längre) och dess entity_id används inte av något aktivt just nu.\n\nFör att ta bort den (stoppa Home Assistant först):\n\n`{remove_command}`"
-    },
-    "orphan_dangerous": {
-      "title": "Föräldralös entitet (namnet återanvänt – manuell åtgärd krävs): {entity_id}",
-      "description": "En föräldralös registerpost (registrerings-ID: {registry_id}) delar sitt entity_id med en entitet som är aktiv just nu. Kan inte tas bort säkert via namn. Anropa safe_orphan_cleaner.remove med registry_ids: ['{registry_id}'] för att få exakt rätt, säkert kommando."
     }
   }
 }
