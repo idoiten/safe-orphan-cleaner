@@ -1,4 +1,21 @@
 {
+  "services": {
+    "scan": {
+      "name": "Skanna",
+      "description": "Skannar entitetsregistret efter poster som Home Assistant själv flaggat som föräldralösa (orphaned_timestamp satt). Delar upp resultaten i \"safe\" (entity_id inte återanvänt någonstans live) och \"dangerous\" (entity_id har återanvänts av en entitet som är aktiv just nu — måste tas bort med registry_id, aldrig med namn).",
+      "fields": {}
+    },
+    "remove": {
+      "name": "Ta bort",
+      "description": "Tar bort specifika föräldralösa registerposter permanent, via deras interna registry_id (från en tidigare skanning). Kontrollerar oberoende live-entitetssäkerheten igen inför varje borttagning och vägrar varje post vars entity_id är aktivt just nu.",
+      "fields": {
+        "registry_ids": {
+          "name": "Registrerings-ID:n",
+          "description": "Lista över interna registrerings-ID:n att ta bort (från skanningsresultat)."
+        }
+      }
+    }
+  },
   "issues": {
     "orphan_safe": {
       "title": "Föräldralös entitet: {entity_id}",

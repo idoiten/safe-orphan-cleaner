@@ -1,4 +1,21 @@
 {
+  "services": {
+    "scan": {
+      "name": "Scan",
+      "description": "Scans the entity registry for entries flagged as orphaned by Home Assistant itself (orphaned_timestamp set). Splits results into \"safe\" (entity_id not reused anywhere live) and \"dangerous\" (entity_id has been reused by a currently live entity - must be removed by registry_id only, never by name).",
+      "fields": {}
+    },
+    "remove": {
+      "name": "Remove",
+      "description": "Permanently removes specific orphaned registry entries by their internal registry_id (from a prior scan). Re-checks the live-entity safety condition independently before each removal and refuses any entry whose entity_id is currently live.",
+      "fields": {
+        "registry_ids": {
+          "name": "Registry IDs",
+          "description": "List of internal registry ids to remove (from scan results)."
+        }
+      }
+    }
+  },
   "issues": {
     "orphan_safe": {
       "title": "Orphaned entity: {entity_id}",
@@ -18,6 +35,6 @@
     "orphan_dangerous": {
       "title": "Orphaned entity (name reused - manual action needed): {entity_id}",
       "description": "An orphaned registry entry (registry id: {registry_id}) shares its entity_id with a currently LIVE entity. This cannot be auto-fixed for safety. If you want to remove only the orphaned entry, call the safe_orphan_cleaner.remove service with registry_ids: ['{registry_id}'] - never remove by entity_id in this case."
-      }
+    }
   }
 }
